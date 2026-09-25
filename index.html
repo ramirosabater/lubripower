@@ -2821,7 +2821,7 @@ function updateBadges(){ var n=cartCount(); document.querySelectorAll("[data-car
 function addToCart(k){
   var f=null; cart.forEach(function(it){ if(it.k===k) f=it; });
   if(f) f.qty++; else cart.push({k:k,qty:1});
-  saveCart(); updateBadges();
+  saveCart(); updateBadges(); resetCartBlob();
   var r=cartResolve({k:k}); toast("Agregado al carrito ✓");
 }
 var toastT; function toast(msg){ var t=$("#toast"); if(!t) return; t.innerHTML='<div class="toast" role="status">'+esc(msg)+'</div>'; clearTimeout(toastT); toastT=setTimeout(function(){ t.innerHTML=""; },2200); }
@@ -2853,12 +2853,13 @@ function renderCart(){
        '<p class="cnote">Los precios y la disponibilidad se confirman por WhatsApp.</p></div>'+
        '<div class="field"><label for="cartName">Tu nombre (opcional)</label><input type="text" id="cartName" value="'+esc(ui.cartName||"")+'" placeholder="Para saber quién pide"></div>'+
        '<div class="cbtns"><a class="btn btn-wa" target="_blank" rel="noopener" href="'+wa(cartMessage())+'">'+WA_ICON+'Enviar pedido por WhatsApp</a>'+
-       '<button class="btn btn-ink" data-act="cartimg">Compartir imagen del carrito</button>'+
+       '<button class="btn btn-ink" data-act="cartimg">'+(IS_MOBILE?'Compartir imagen del pedido':'Copiar imagen y abrir WhatsApp')+'</button>'+
        (ui.imgNote?'<p class="cnote" style="color:var(--ink)">'+ui.imgNote+'</p>':'')+
        '<button class="btn btn-ghost" data-act="cartclear" style="color:var(--hot)">Vaciar carrito</button></div>';
   }
   h+='</div></div></div>';
   box.innerHTML=h;
+  if(lines.length) cartBlob();
 }
 function loadImg(src){ return new Promise(function(res){ if(!src) return res(null); var i=new Image(); i.onload=function(){res(i);}; i.onerror=function(){res(null);}; i.src=src; }); }
 function wrapText(ctx, text, maxW){ var words=String(text).split(" "), out=[], line=""; words.forEach(function(w){ var t=line?line+" "+w:w; if(ctx.measureText(t).width>maxW && line){ out.push(line); line=w; } else line=t; }); if(line) out.push(line); return out; }
@@ -2892,19 +2893,37 @@ function cartImage(){
     return new Promise(function(res){ cv.toBlob(function(b){ res(b); },"image/png"); });
   });
 }
+var IS_MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints>1 && /Mac/.test(navigator.platform||""));
+function cartBlob(){ if(!ui.cartBlobP) ui.cartBlobP = cartImage().then(function(b){ ui.cartBlobReady=b; return b; }); return ui.cartBlobP; }
+function resetCartBlob(){ ui.cartBlobP=null; ui.cartBlobReady=null; }
+function downloadBlob(blob){ var a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="pedido-lubripower.png"; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },1500); }
 function shareCartImage(){
-  ui.imgNote="Generando imagen…"; renderCart();
-  cartImage().then(function(blob){
-    if(!blob) throw new Error("blob");
-    var file; try{ file=new File([blob],"pedido-lubripower.png",{type:"image/png"}); }catch(_){ file=null; }
-    if(file && navigator.canShare && navigator.canShare({files:[file]})){
-      ui.imgNote="Elegí WhatsApp y después el chat de LubriPower."; renderCart();
-      return navigator.share({files:[file], text:"Mi pedido para LubriPower"}).catch(function(){});
+  var chat = wa("¡Hola LubriPower! Te mando la imagen de mi pedido.");
+  if(IS_MOBILE && navigator.share){
+    var go=function(blob){
+      var file; try{ file=new File([blob],"pedido-lubripower.png",{type:"image/png"}); }catch(_){ file=null; }
+      if(file && navigator.canShare && navigator.canShare({files:[file]})){
+        return navigator.share({files:[file]}).then(function(){ ui.imgNote="Listo. Si no elegiste el chat de LubriPower, volvé a tocar el botón."; renderCart(); }, function(e){
+          if(e && e.name==="NotAllowedError"){ ui.imgNote="Tocá el botón de nuevo para compartir."; renderCart(); }
+        });
+      }
+      downloadBlob(blob); ui.imgNote='Se guardó la imagen en tu teléfono. Abrí el chat y adjuntala: <a href="'+chat+'" target="_blank" rel="noopener"><b>abrir WhatsApp</b></a>.'; renderCart();
+    };
+    if(ui.cartBlobReady){ go(ui.cartBlobReady); } else { ui.imgNote="Preparando la imagen…"; renderCart(); cartBlob().then(go); }
+    return;
+  }
+  // computadora: copiar la imagen al portapapeles y abrir el chat para pegarla
+  var copied=false;
+  try{
+    if(navigator.clipboard && window.ClipboardItem){
+      navigator.clipboard.write([new ClipboardItem({"image/png": cartBlob()})]).then(function(){
+        copied=true; ui.imgNote="La imagen quedó <b>copiada</b>. En el chat de WhatsApp que se abrió, pegala con <b>Ctrl + V</b> (o Cmd + V en Mac) y enviala."; renderCart();
+      }, function(){ cartBlob().then(function(b){ downloadBlob(b); ui.imgNote='Se descargó la imagen <b>pedido-lubripower.png</b>. En el chat de WhatsApp tocá el clip y adjuntala.'; renderCart(); }); });
+    } else {
+      cartBlob().then(function(b){ downloadBlob(b); ui.imgNote='Se descargó la imagen <b>pedido-lubripower.png</b>. En el chat de WhatsApp tocá el clip y adjuntala.'; renderCart(); });
     }
-    var a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="pedido-lubripower.png"; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },1500);
-    ui.imgNote='Se descargó la imagen <b>pedido-lubripower.png</b>. Abrí el chat y adjuntala: <a href="'+wa("¡Hola LubriPower! Te mando la imagen de mi pedido.")+'" target="_blank" rel="noopener"><b>abrir WhatsApp</b></a>.';
-    renderCart();
-  }).catch(function(){ ui.imgNote="No se pudo generar la imagen en este navegador. Usá “Enviar pedido por WhatsApp”."; renderCart(); });
+  }catch(_){ cartBlob().then(function(b){ downloadBlob(b); }); }
+  window.open(chat,"_blank","noopener");
 }
 
 /* ------------------------------ admin ------------------------------ */
@@ -3063,7 +3082,7 @@ function softRender(){ clearTimeout(rerenderT); rerenderT=setTimeout(function(){
 function onInput(e){
   var t = e.target;
   if(t.id==="q"){ ui.q=t.value; ui.limit=24; renderGrid(); return; }
-  if(t.id==="cartName"){ ui.cartName=t.value; var wl=document.querySelector(".cbtns a.btn-wa"); if(wl) wl.href=wa(cartMessage()); return; }
+  if(t.id==="cartName"){ ui.cartName=t.value; resetCartBlob(); var wl=document.querySelector(".cbtns a.btn-wa"); if(wl) wl.href=wa(cartMessage()); return; }
   if(t.id && t.id.indexOf("bulk")===0){ var b=ui.bulk; if(t.id==="bulkPct") b.pct=t.value; if(t.id==="bulkCat") b.cat=t.value; if(t.id==="bulkRound") b.round=t.value; if(t.id==="bulkInc") b.inc=t.checked; b.confirm=false; var bc=$("#bulkBox"); if(bc) bc.outerHTML=bulkBox(); return; }
   if(t.id==="aq"){ ui.aq=t.value; var l=$("#alist"); if(l) l.innerHTML=admProdRows(); return; }
   if(!t.dataset || !t.dataset.c || !t.dataset.k) return;
@@ -3113,7 +3132,7 @@ function onClick(e){
   var ca=t.dataset.act;
   if(ca==="opencart"){ ui.cartOpen=true; ui.imgNote=""; renderCart(); return; }
   if(ca==="closecart"){ ui.cartOpen=false; renderCart(); return; }
-  if(ca==="cplus"||ca==="cminus"||ca==="cdel"){ cart.forEach(function(it){ if(it.k===t.dataset.k){ it.qty+= ca==="cplus"?1:(ca==="cminus"?-1:-it.qty); } }); cart=cart.filter(function(it){ return it.qty>0; }); saveCart(); updateBadges(); ui.imgNote=""; renderCart(); return; }
+  if(ca==="cplus"||ca==="cminus"||ca==="cdel"){ cart.forEach(function(it){ if(it.k===t.dataset.k){ it.qty+= ca==="cplus"?1:(ca==="cminus"?-1:-it.qty); } }); cart=cart.filter(function(it){ return it.qty>0; }); resetCartBlob(); saveCart(); updateBadges(); ui.imgNote=""; renderCart(); return; }
   if(ca==="cartclear"){ cart=[]; saveCart(); updateBadges(); renderCart(); return; }
   if(ca==="cartimg"){ shareCartImage(); return; }
   if(t.dataset.cat){ ui.cat=t.dataset.cat; ui.limit=24; renderCats(); renderGrid(); return; }
