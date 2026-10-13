@@ -217,7 +217,9 @@ footer.foot .wrap{display:flex;justify-content:space-between;gap:12px;flex-wrap:
 .status{font-size:14px;color:#C9D1BC}
 .status.dirty{color:var(--sun)}
 .status.err{color:#FF8A80}
-.adm .content{overflow:auto;padding:18px;flex:1;display:grid;gap:14px;align-content:start}
+.adm .content{overflow:auto;overflow-x:hidden;padding:18px;flex:1;display:grid;grid-template-columns:minmax(0,1fr);gap:14px;align-content:start}
+.adm .content>*,.form,.fgrid>*{min-width:0}
+#alist{grid-template-columns:minmax(0,1fr)}.arow{min-width:0}
 .adm .hint{font-size:14px;color:var(--muted);margin:0}
 .arow{background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px;display:flex;align-items:center;gap:12px}
 .arow .thumb{width:54px;height:54px;border-radius:10px;overflow:hidden;flex:none}
@@ -4978,7 +4980,7 @@ function liveCombos(){ return state.combos.filter(function(c){ return c.activa; 
 function offerFor(pid){ var l=liveOffers(); for(var i=0;i<l.length;i++) if(l[i].prodId===pid) return l[i]; return null; }
 function pct(a,b){ if(!a||!b||b>=a) return 0; return Math.round((1-b/a)*100); }
 function fmtDate(s){ if(!s) return ""; var p=s.split("-"); return p[2]+"/"+p[1]; }
-function priceOf(p){ var o=offerFor(p.id); if(o && o.ahora) return o.ahora; return p.precio||null; }
+function priceOf(p){ var o=offerFor(p.id); if(o && o.ahora) return o.ahora; if(p.consultar) return null; return p.precio||null; }
 var CART_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6.2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="20" r="1.6" fill="currentColor"/><circle cx="17" cy="20" r="1.6" fill="currentColor"/></svg>';
 function wa(text){ var n=(state.settings.whatsapp||"").replace(/\D/g,""); return "https://wa.me/"+n+"?text="+encodeURIComponent(text); }
 
@@ -5305,6 +5307,11 @@ function bulkBox(){
     '<p class="hint">Cambia solo los artículos que ya tienen precio ('+tg.prods.length+' ahora'+(b.inc?', más '+tg.ofs.length+' ofertas y '+tg.cbs.length+' combos':'')+'). Los combos se ajustan solo si elegís todas las categorías.</p>';
   if(b.confirm && pct) h+='<div class="hrow"><span style="font-weight:700">¿'+(pct>0?'Aumentar':'Bajar')+' '+Math.abs(pct)+'% los precios?</span><button class="btn btn-sm danger solid" data-act="bulkyes">Sí, aplicar</button><button class="btn btn-sm btn-ghost" data-act="bulkno">Cancelar</button></div>';
   else h+='<div><button class="btn btn-sm btn-ink" data-act="bulkask"'+(pct&&(tg.prods.length+tg.ofs.length+tg.cbs.length)?'':' disabled style="opacity:.5"')+'>Aplicar '+(pct?(pct>0?'+':'')+pct+'%':'aumento')+'</button></div>';
+  var bc=state.productos.filter(function(p){ return b.cat==="all"||p.cat===b.cat; });
+  var nh=bc.filter(function(p){ return p.consultar; }).length;
+  h+='<div style="border-top:2px dashed var(--line);padding-top:12px;display:grid;gap:8px"><strong style="font-family:var(--display);font-size:20px;text-transform:uppercase;font-style:italic">Modo “Consultá precio”</strong>'+
+    '<p class="hint">Oculta o muestra los precios de <b>'+esc(b.cat==="all"?"todas las categorías":catById(b.cat).nombre)+'</b> ('+bc.length+' productos, '+nh+' ocultos ahora). Los precios no se borran: los podés volver a mostrar cuando quieras. Elegí la categoría arriba, en “Aplicar a”.</p>'+
+    '<div class="acts" style="justify-content:flex-start"><button class="btn btn-sm btn-ink" data-act="hideprices"'+(nh<bc.length?'':' disabled style="opacity:.5"')+'>Poner en Consultá precio</button><button class="btn btn-sm btn-ghost" data-act="showprices"'+(nh?'':' disabled style="opacity:.5"')+'>Mostrar precios</button></div></div>';
   return h+'</div>';
 }
 function applyBulk(){
@@ -5333,9 +5340,9 @@ function admProdRows(){
         '<div class="photo"><div class="pv">'+art(p)+'</div><div class="acts" style="justify-content:flex-start"><span class="btn btn-sm btn-lime filebtn">'+(fotoSrc(p)?'Cambiar foto':'Subir foto')+'<input type="file" accept="image/*" data-act="photo" data-id="'+p.id+'" aria-label="Subir foto"></span>'+(fotoSrc(p)?'<button class="btn btn-sm btn-ghost" data-act="nophoto" data-id="'+p.id+'">Quitar foto</button>':'')+'</div></div>'+
         '<div class="fgrid">'+field("Nombre","productos",p.id,"nombre",p.nombre)+field("Marca","productos",p.id,"marca",p.marca)+
         field("Código","productos",p.id,"codigo",p.codigo||"")+field("Stock","productos",p.id,"stock",p.stock,"number")+field("Categoría","productos",p.id,"cat",p.cat,"select",cats)+field("Precio (vacío = consultar)","productos",p.id,"precio",p.precio,"number")+
-        field("Descripción","productos",p.id,"desc",p.desc,"textarea")+'</div>'+checkbox("Destacado (aparece primero)","productos",p.id,"destacado",p.destacado)+'</div>';
+        field("Descripción","productos",p.id,"desc",p.desc,"textarea")+'</div>'+checkbox("Destacado (aparece primero)","productos",p.id,"destacado",p.destacado)+checkbox("Mostrar “Consultá precio” (oculta el precio sin borrarlo)","productos",p.id,"consultar",p.consultar)+'</div>';
     } else {
-      h += '<div class="arow"><div class="thumb">'+art(p)+'</div><div class="meta"><strong>'+esc(p.nombre||"(sin nombre)")+'</strong><span>'+(p.codigo?esc(p.codigo)+' · ':'')+esc(catById(p.cat).nombre)+' · '+(p.precio?money(p.precio):'Consultá precio')+(p.stock!=null?' · stock '+p.stock:'')+(fotoSrc(p)?'':' · sin foto')+'</span></div><div class="acts"><button class="btn btn-sm btn-ink" data-act="edit" data-id="'+p.id+'">Editar</button></div></div>';
+      h += '<div class="arow"><div class="thumb">'+art(p)+'</div><div class="meta"><strong>'+esc(p.nombre||"(sin nombre)")+'</strong><span>'+(p.codigo?esc(p.codigo)+' · ':'')+esc(catById(p.cat).nombre)+' · '+(p.consultar?'Consultá precio'+(p.precio?' (oculto '+money(p.precio)+')':''):(p.precio?money(p.precio):'Consultá precio'))+(p.stock!=null?' · stock '+p.stock:'')+(fotoSrc(p)?'':' · sin foto')+'</span></div><div class="acts"><button class="btn btn-sm btn-ink" data-act="edit" data-id="'+p.id+'">Editar</button></div></div>';
     }
   });
   return h;
@@ -5465,6 +5472,7 @@ function onClick(e){
   if(act==="bulkask"){ ui.bulk.confirm=true; var bb=$("#bulkBox"); if(bb) bb.outerHTML=bulkBox(); return; }
   if(act==="bulkno"){ ui.bulk.confirm=false; var bb2=$("#bulkBox"); if(bb2) bb2.outerHTML=bulkBox(); return; }
   if(act==="bulkyes"){ applyBulk(); return; }
+  if(act==="hideprices"||act==="showprices"){ var hide=act==="hideprices", n2=0; state.productos.forEach(function(p){ if(ui.bulk.cat==="all"||p.cat===ui.bulk.cat){ if(!!p.consultar!==hide) n2++; p.consultar=hide; } }); afterChange(); ui.msg=(hide?"Listo: "+n2+" productos ahora dicen “Consultá precio”.":"Listo: se muestran los precios de "+n2+" productos.")+" Acordate de guardar los cambios."; ui.msgType=""; refreshStatus(); return; }
   if(act==="edit"){ ui.editing=id; ui.confirmDel=null; renderAdmin(); var f=$("#edit-"+id); if(f) f.scrollIntoView({block:"nearest"}); return; }
   if(act==="done"){ ui.editing=null; ui.confirmDel=null; renderAdmin(); return; }
   if(act==="del"){ ui.confirmDel=c+":"+id; renderAdmin(); return; }
