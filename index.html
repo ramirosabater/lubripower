@@ -4980,7 +4980,9 @@ function liveCombos(){ return state.combos.filter(function(c){ return c.activa; 
 function offerFor(pid){ var l=liveOffers(); for(var i=0;i<l.length;i++) if(l[i].prodId===pid) return l[i]; return null; }
 function pct(a,b){ if(!a||!b||b>=a) return 0; return Math.round((1-b/a)*100); }
 function fmtDate(s){ if(!s) return ""; var p=s.split("-"); return p[2]+"/"+p[1]; }
-function priceOf(p){ var o=offerFor(p.id); if(o && o.ahora) return o.ahora; if(p.consultar) return null; return p.precio||null; }
+function priceOf(p){ if(p.consultar) return null; var o=offerFor(p.id); if(o && o.ahora) return o.ahora; return p.precio||null; }
+function offerView(o,p){ var c={}; for(var k in o) c[k]=o[k]; if(!p) return c; if(p.consultar){ c.ahora=null; c.antes=null; return c; } if(!c.ahora && p.precio){ c.ahora=p.precio; c.antes=null; } else if(c.ahora && !c.antes && p.precio && p.precio>c.ahora){ c.antes=p.precio; } return c; }
+function comboView(c){ if(!c.consultar) return c; var x={}; for(var k in c) x[k]=c[k]; x.precio=null; x.antes=null; return x; }
 var CART_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6.2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="20" r="1.6" fill="currentColor"/><circle cx="17" cy="20" r="1.6" fill="currentColor"/></svg>';
 function wa(text){ var n=(state.settings.whatsapp||"").replace(/\D/g,""); return "https://wa.me/"+n+"?text="+encodeURIComponent(text); }
 
@@ -5030,7 +5032,7 @@ function render(){
        '<div class="ctas"><a class="btn btn-lime" href="#catalogo">Ver catálogo</a>'+
        (offers.length?'<a class="btn btn-ghost" href="#ofertas">Ver ofertas</a>':'')+'</div></div>';
   if(feat){
-    var fp = prodById(feat.prodId);
+    var fp = prodById(feat.prodId); feat = offerView(feat, fp);
     h += '<div><div class="feature"><span class="eyebrow tag">'+esc(feat.etiqueta||"Oferta")+'</span>'+
          art(fp,true)+'<h3>'+esc(fp.nombre)+'</h3>'+
          '<div class="row">'+(feat.ahora?'<span class="now price">'+money(feat.ahora)+'</span>'+(feat.antes?'<span class="old price">'+money(feat.antes)+'</span>':''):'<span class="now ask">Consultá precio</span>')+'</div>'+
@@ -5045,7 +5047,7 @@ function render(){
   if(offers.length){
     h += '<section class="block" id="ofertas"><div class="wrap"><div class="sec-head"><div><h2><span class="hl">Ofertas</span></h2><p>Precios especiales por tiempo limitado.</p></div></div><div class="offers">';
     offers.forEach(function(o){
-      var p = prodById(o.prodId), d = pct(o.antes,o.ahora);
+      var p = prodById(o.prodId); o = offerView(o, p); var d = pct(o.antes,o.ahora);
       h += '<article class="offer"><div class="media">'+art(p)+(d?'<div class="sticker"><div>-'+d+'%<small>OFF</small></div></div>':'')+'</div>'+
            '<div class="body">'+(o.etiqueta?'<span class="lbl">'+esc(o.etiqueta)+'</span>':'')+'<h3>'+esc(p.nombre)+'</h3>'+
            '<div>'+(o.ahora?(o.antes?'<span class="old price">'+money(o.antes)+'</span>':'')+'<div class="now price">'+money(o.ahora)+'</div>':'<div class="now ask">Consultá precio</div>')+'</div>'+
@@ -5058,6 +5060,7 @@ function render(){
   if(combos.length){
     h += '<section class="block" id="combos" style="padding-top:'+(offers.length?'8px':'64px')+'"><div class="wrap"><div class="sec-head"><div><h2><span class="hl">Combos</span></h2><p>Armamos packs para que ahorres llevando todo junto.</p></div></div><div class="combos">';
     combos.forEach(function(c){
+      c = comboView(c);
       var items = String(c.items||"").split("\n").map(function(x){return x.trim();}).filter(Boolean);
       var ahorro = (c.antes && c.precio && c.antes>c.precio) ? c.antes-c.precio : 0;
       h += '<article class="combo" style="--c:'+col(c.color)+'"><div class="cap"><span class="kicker">COMBO</span><h3>'+esc(String(c.titulo||"").replace(/^combo\s+/i,""))+'</h3></div>'+
@@ -5126,7 +5129,7 @@ function saveCart(){ try{ localStorage.setItem(CART_KEY, JSON.stringify(cart)); 
 function cartResolve(it){
   var t=it.k.charAt(0), id=it.k.slice(2);
   if(t==="p"){ var p=prodById(id); if(!p) return null; return {name:p.nombre, brand:p.marca, price:priceOf(p), prod:p, code:p.codigo||""}; }
-  if(t==="c"){ var c=null; state.combos.forEach(function(x){ if(x.id===id) c=x; }); if(!c) return null; return {name:c.titulo, brand:"Combo", price:c.precio||null, combo:c}; }
+  if(t==="c"){ var c=null; state.combos.forEach(function(x){ if(x.id===id) c=x; }); if(!c) return null; return {name:c.titulo, brand:"Combo", price:(c.consultar?null:(c.precio||null)), combo:c}; }
   return null;
 }
 function cartLines(){ return cart.map(function(it){ var r=cartResolve(it); return r?{k:it.k,qty:it.qty,name:r.name,brand:r.brand,price:r.price,prod:r.prod,combo:r.combo,code:r.code}:null; }).filter(Boolean); }
@@ -5308,9 +5311,10 @@ function bulkBox(){
   if(b.confirm && pct) h+='<div class="hrow"><span style="font-weight:700">¿'+(pct>0?'Aumentar':'Bajar')+' '+Math.abs(pct)+'% los precios?</span><button class="btn btn-sm danger solid" data-act="bulkyes">Sí, aplicar</button><button class="btn btn-sm btn-ghost" data-act="bulkno">Cancelar</button></div>';
   else h+='<div><button class="btn btn-sm btn-ink" data-act="bulkask"'+(pct&&(tg.prods.length+tg.ofs.length+tg.cbs.length)?'':' disabled style="opacity:.5"')+'>Aplicar '+(pct?(pct>0?'+':'')+pct+'%':'aumento')+'</button></div>';
   var bc=state.productos.filter(function(p){ return b.cat==="all"||p.cat===b.cat; });
+  if(b.cat==="all") bc=bc.concat(state.combos);
   var nh=bc.filter(function(p){ return p.consultar; }).length;
   h+='<div style="border-top:2px dashed var(--line);padding-top:12px;display:grid;gap:8px"><strong style="font-family:var(--display);font-size:20px;text-transform:uppercase;font-style:italic">Modo “Consultá precio”</strong>'+
-    '<p class="hint">Oculta o muestra los precios de <b>'+esc(b.cat==="all"?"todas las categorías":catById(b.cat).nombre)+'</b> ('+bc.length+' productos, '+nh+' ocultos ahora). Los precios no se borran: los podés volver a mostrar cuando quieras. Elegí la categoría arriba, en “Aplicar a”.</p>'+
+    '<p class="hint">Oculta o muestra los precios de <b>'+esc(b.cat==="all"?"todas las categorías":catById(b.cat).nombre)+'</b> ('+bc.length+(b.cat==="all"?' productos y combos':' productos')+', '+nh+' ocultos ahora). Las ofertas siguen a su producto. Los precios no se borran: los podés volver a mostrar cuando quieras. Elegí la categoría arriba, en “Aplicar a”.</p>'+
     '<div class="acts" style="justify-content:flex-start"><button class="btn btn-sm btn-ink" data-act="hideprices"'+(nh<bc.length?'':' disabled style="opacity:.5"')+'>Poner en Consultá precio</button><button class="btn btn-sm btn-ghost" data-act="showprices"'+(nh?'':' disabled style="opacity:.5"')+'>Mostrar precios</button></div></div>';
   return h+'</div>';
 }
@@ -5370,7 +5374,7 @@ function admCombos(){
       field("Nombre del combo","combos",c.id,"titulo",c.titulo)+field("Descripción corta","combos",c.id,"desc",c.desc)+
       field("Precio anterior (suma suelta)","combos",c.id,"antes",c.antes,"number")+field("Precio del combo (vacío = consultar)","combos",c.id,"precio",c.precio,"number")+
       field("Qué incluye (uno por línea)","combos",c.id,"items",c.items,"textarea")+colorPicker("combos",c.id,c.color)+
-      '</div>'+checkbox("Mostrar en la página","combos",c.id,"activa",c.activa)+'</div>';
+      '</div>'+checkbox("Mostrar en la página","combos",c.id,"activa",c.activa)+checkbox("Mostrar “Consultá precio” (oculta el precio sin borrarlo)","combos",c.id,"consultar",c.consultar)+'</div>';
   });
   return h;
 }
@@ -5472,7 +5476,7 @@ function onClick(e){
   if(act==="bulkask"){ ui.bulk.confirm=true; var bb=$("#bulkBox"); if(bb) bb.outerHTML=bulkBox(); return; }
   if(act==="bulkno"){ ui.bulk.confirm=false; var bb2=$("#bulkBox"); if(bb2) bb2.outerHTML=bulkBox(); return; }
   if(act==="bulkyes"){ applyBulk(); return; }
-  if(act==="hideprices"||act==="showprices"){ var hide=act==="hideprices", n2=0; state.productos.forEach(function(p){ if(ui.bulk.cat==="all"||p.cat===ui.bulk.cat){ if(!!p.consultar!==hide) n2++; p.consultar=hide; } }); afterChange(); ui.msg=(hide?"Listo: "+n2+" productos ahora dicen “Consultá precio”.":"Listo: se muestran los precios de "+n2+" productos.")+" Acordate de guardar los cambios."; ui.msgType=""; refreshStatus(); return; }
+  if(act==="hideprices"||act==="showprices"){ var hide=act==="hideprices", n2=0; state.productos.forEach(function(p){ if(ui.bulk.cat==="all"||p.cat===ui.bulk.cat){ if(!!p.consultar!==hide) n2++; p.consultar=hide; } }); if(ui.bulk.cat==="all") state.combos.forEach(function(c){ if(!!c.consultar!==hide) n2++; c.consultar=hide; }); afterChange(); ui.msg=(hide?"Listo: "+n2+" artículos ahora dicen “Consultá precio”.":"Listo: se muestran los precios de "+n2+" artículos.")+" Acordate de guardar los cambios."; ui.msgType=""; refreshStatus(); return; }
   if(act==="edit"){ ui.editing=id; ui.confirmDel=null; renderAdmin(); var f=$("#edit-"+id); if(f) f.scrollIntoView({block:"nearest"}); return; }
   if(act==="done"){ ui.editing=null; ui.confirmDel=null; renderAdmin(); return; }
   if(act==="del"){ ui.confirmDel=c+":"+id; renderAdmin(); return; }
